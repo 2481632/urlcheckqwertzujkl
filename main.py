@@ -1,6 +1,7 @@
 import os
 import sys, getopt
 import re
+import unicodedata
 from colorama import Fore, Back, Style
 
 verbose = False
@@ -69,34 +70,35 @@ def get_urls_in_response(url):
     :returns: List of urls contained in html response
 
     """
-    command = "wget -qO- " + url
-    rawHTML = os.popen(command).read()
-    hrefRegexString = r"""href=".*?" """
-    hrefs = re.findall(hrefRegexString, rawHTML)
-    hrefs = re.findall('"([^"]*)"', str(hrefs))
+#    command = "wget -qO- " + url
+#    rawHTML = os.popen(command).read()
+#    rawHTML = rawHTML.encode('utf-8')
+#    hrefRegexString = r"""href=".*?" """
+#    hrefs = re.findall(hrefRegexString, str(rawHTML))
+#    hrefs = re.findall('"([^"]*)"', str(hrefs))
+#
+#    hrefRegexString = r"""href='.*?' """
+#    hrefs2 = re.findall(hrefRegexString, str(rawHTML))
+#    hrefs2 = re.findall("'([^']*)'", str(hrefs))
+#
+#    hrefs += hrefs2
+#
+#    for i in range(0, len(hrefs)):
+#        if hrefs[i][0] == "/":
+#            if baseUrl[-1] == "/":
+#                hrefs[i] = str(baseUrl[:-1]) + hrefs[i]
+#            else:
+#                hrefs[i] = str(baseUrl) + hrefs[i]
 
-    hrefRegexString = r"""href='.*?' """
-    hrefs2 = re.findall(hrefRegexString, rawHTML)
-    hrefs2 = re.findall("'([^']*)'", str(hrefs))
-
-    hrefs += hrefs2
-
-    for i in range(0, len(hrefs)):
-        if hrefs[i][0] == "/":
-            if baseUrl[-1] == "/":
-                hrefs[i] = str(baseUrl[:-1]) + hrefs[i]
-            else:
-                hrefs[i] = str(baseUrl) + hrefs[i]
-
-    command = "wget -qO- " + url + " | lynx -dump -listonly -stdin | grep -E 'http:|https:' | awk '{ $1=\"\"; print $0 }'"
+    command = "wget -qO- '" + url + "' | lynx -dump -listonly -stdin | grep -E 'http:|https:' | awk '{ $1=\"\"; print $0 }'"
     if verbose:
         print_info(command)
     htmlResponse = os.popen(command).read()
     if verbose:
         print_info(htmlResponse)
-    return htmlResponse.splitlines() + hrefs
+    return htmlResponse.splitlines()
 
-def linkcheck(urls, count=4, stack=[]):
+def linkcheck(urls, count=2, stack=[]):
     """Where the magic happens. Will preform everything to check all urls
 
     :urls: All urls  
@@ -117,10 +119,10 @@ def linkcheck(urls, count=4, stack=[]):
             print(*urls, sep = "\n")
             print("\n")
         for url in urls:
+            stack.append(url)
             if verbose:
                 print_info("linkcheck: " + str(count))
                 print_info("Check: " + url)
-            stack.append(url)
             httpResponse = get_http_response_code(url)        
             print("Response of " + url + " " + httpResponse)
             if verbose:
@@ -128,6 +130,13 @@ def linkcheck(urls, count=4, stack=[]):
             if "200" in httpResponse:
                 if str(baseUrlLang).strip() in url:
                     newUrls = get_urls_in_response(url)
+                    newUrls = list(x for x in newUrls if x not in stack)
+                    if verboseLevel > 0:
+                        print("-- Check next: --- \n ")
+                        print(urls)
+                        print("\n --- \n")
+                        print(newUrls)
+                        print("\n")
                     linkcheck(newUrls, count-1, stack)
                 else: 
                     if str(baseUrl).strip() in url:
@@ -141,14 +150,16 @@ def linkcheck(urls, count=4, stack=[]):
             else: 
                 print(Fore.RED + "HTTP response of " + url + ': ' + str(httpResponse))
                 print(Style.RESET_ALL)
-                if str(baseUrl).strip() in url:
-                    print(Fore.YELLOW + "Language changed?")
-                else:
+                if str(baseUrl).strip() in url and not str(baseUrlLang) in url:
+                        print(Fore.YELLOW + "Language changed?")
+                if not str(baseUrl).strip() in url:
                     print(Fore.YELLOW + "External URL reached")
                 print("\n Stack: \n")
                 print(stack[-3:])
                 print("\n -- End of stack --")
                 print(Style.RESET_ALL)
+    return stack
+
 def main():
 
     # Main url to check
