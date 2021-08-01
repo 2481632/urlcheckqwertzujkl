@@ -3,10 +3,16 @@ import sys, getopt
 import re
 import unicodedata
 from colorama import Fore, Back, Style
+import subprocess
+from enum import Enum
 
 verbose = False
 verboseLevel = 0
 baseUrl = ''
+
+class urlCode(Enum):
+    OK = 0,
+    LAN = 1
 
 ##############################
 # Input parameter processing #
@@ -59,109 +65,140 @@ def get_http_response_code(url):
     :returns: http code of given url 
 
     """
-    command = "curl -Is " + url + " | head -1 | awk '{ print $2 }'"
+    # command = "curl -Is " + url + " | head -1 | awk '{ print $2 }'"
+    command = "curl -s -o /dev/null -I -w '%{http_code}' '{url}'"
+    command = command.replace("{url}", url).lstrip()
     httpCode = os.popen(command).read()
-    if verbose:
+    if verboseLevel > 2:
+        print_info(command)
         print_info("HTTP code of " +  url + ": " + httpCode)
     return httpCode.strip()
 
 def get_urls_in_response(url):
-    """TODO: Download html code of given url and filter for valide urls
+    """Download html code of given url and filter for valide urls
     :returns: List of urls contained in html response
 
     """
-#    command = "wget -qO- " + url
-#    rawHTML = os.popen(command).read()
-#    rawHTML = rawHTML.encode('utf-8')
-#    hrefRegexString = r"""href=".*?" """
-#    hrefs = re.findall(hrefRegexString, str(rawHTML))
-#    hrefs = re.findall('"([^"]*)"', str(hrefs))
-#
-#    hrefRegexString = r"""href='.*?' """
-#    hrefs2 = re.findall(hrefRegexString, str(rawHTML))
-#    hrefs2 = re.findall("'([^']*)'", str(hrefs))
-#
-#    hrefs += hrefs2
-#
-#    for i in range(0, len(hrefs)):
-#        if hrefs[i][0] == "/":
-#            if baseUrl[-1] == "/":
-#                hrefs[i] = str(baseUrl[:-1]) + hrefs[i]
-#            else:
-#                hrefs[i] = str(baseUrl) + hrefs[i]
+    command = "lynx -dump -listonly '{url}' | grep -E '^[[:space:]]*[0-9]*.[[:space:]]*(https://|http://)' | awk '{ $1=\"\"; print $0 }'"
 
-    command = "wget -qO- '" + url + "' | lynx -dump -listonly -stdin | grep -E 'http:|https:' | awk '{ $1=\"\"; print $0 }'"
-    if verbose:
-        print_info(command)
+    command = command.replace("{url}", url)
+
+    # Execute bash command and save stdot
     htmlResponse = os.popen(command).read()
-    if verbose:
-        print_info(htmlResponse)
-    return htmlResponse.splitlines()
 
-def linkcheck(urls, count=2, stack=[]):
+    # Output of bash was in one line with whitespaces as 
+    # delimiter. Split line at whitespace.
+    newUrls = htmlResponse.splitlines()
+
+    if verbose:
+        print("\nHTML Response:  \n")
+        print(htmlResponse)
+
+    # Remove whitespaces on every single string
+    return [s.lstrip() for s in newUrls]
+
+def print_stack(stack):
+    """Print stack in list
+
+    :stack: TODO
+    :returns: TODO
+
+    """
+    print("\n-- Begin of stack --\n")
+    for item in stack:
+        print("->" + str(item))
+    print("\n-- End of stack --\n")
+
+def validate_url(url, stack=None):
+    """Check http status code, language change etc. 
+
+    :url: URL to check 
+    :returns:
+        http code, code
+
+    """
+
+    # Check http code of url
+    httpResponse = get_http_response_code(url)
+
+    # All http response codes which should be accepted
+    allowedResponses = ["200", "301", "302"]
+
+    # Check if http response code of url is not ok
+    if (str(httpResponse) in allowedResponses):
+        print("HTTP Response of: {url} {httpResponse} OK".format(url=url, httpResponse=httpResponse))
+        return True, httpResponse 
+
+    print("\n HTTP Rresponse of: {url} : {httpCode}".format(url=url, httpCode=httpResponse))
+    if stack!= None:
+        print_stack(stack)
+    return False, httpResponse
+
+def linkcheck(urls, depth=3, stack=[], checkedUrls=None):
     """Where the magic happens. Will preform everything to check all urls
 
     :urls: All urls  
-    :returns: TODO
+    :returns: List of all links not returning http status code of 200 
 
     """
 
     global baseUrl
 
-    if verbose:
-        print("Enter linkcheck")
+    # Initialize list / first time call
+    if checkedUrls == None:
+        checkedUrls = []
+
     newUrls = ''
 
-    if count > 0:
-        if verboseLevel > 0:
-            level = 4 - count
-            print("\n--- Check urls (" + str(level) + "): ---")
-            print(*urls, sep = "\n")
-            print("\n")
-        for url in urls:
-            stack.append(url)
+    if verbose:
+        print("Check {num} urls: ".format(num=len(urls)))
+        print_stack(stack)
+
+    for url in urls:
+
+        # Check if url has already been tested
+        if url in checkedUrls:
             if verbose:
-                print_info("linkcheck: " + str(count))
-                print_info("Check: " + url)
-            httpResponse = get_http_response_code(url)        
-            print("Response of " + url + " " + httpResponse)
-            if verbose:
-                print("Base: " + str(baseUrl) + " URL: " + url)
-            if "200" in httpResponse:
-                if str(baseUrlLang).strip() in url:
-                    newUrls = get_urls_in_response(url)
-                    newUrls = list(x for x in newUrls if x not in stack)
-                    if verboseLevel > 0:
-                        print("-- Check next: --- \n ")
-                        print(urls)
-                        print("\n --- \n")
-                        print(newUrls)
-                        print("\n")
-                    linkcheck(newUrls, count-1, stack)
-                else: 
-                    if str(baseUrl).strip() in url:
-                        print(Fore.YELLOW + "Language cahange")
-                    else:
-                        print(Fore.YELLOW + "Reached extern URL")
-                    print("\n Stack: \n")
-                    print(stack[-3:])
-                    print("\n -- End of stack --")
-                    print(Style.RESET_ALL)
-            else: 
-                print(Fore.RED + "HTTP response of " + url + ': ' + str(httpResponse))
-                print(Style.RESET_ALL)
-                if str(baseUrl).strip() in url and not str(baseUrlLang) in url:
-                        print(Fore.YELLOW + "Language changed?")
-                if not str(baseUrl).strip() in url:
-                    print(Fore.YELLOW + "External URL reached")
-                print("\n Stack: \n")
-                print(stack[-3:])
-                print("\n -- End of stack --")
-                print(Style.RESET_ALL)
-    return stack
+                print("Already checked: {url}".replace("{url}", url))
+            continue
+
+        # Add url to checked urls
+        checkedUrls.append(url)
+
+        # If url is not valid (404)
+        valid, httpCode = validate_url(url, stack)
+        if not valid:
+            continue 
+
+        # Check if we followd max depth links and
+        # do not check links on current url
+        if depth < 1:
+            continue 
+
+        # Get all urls on page at url 
+        newUrls = get_urls_in_response(url)
+
+        # Check if page at url has more links to follow.
+        if len(newUrls) <= 0:
+            continue
+
+        # Add current url to stack
+        stack.append(url)
+
+        if verbose:
+            print("Current Stack: ")
+            print_stack(stack)
+    
+        # Call linkcheck with new urls
+        linkcheck(newUrls, depth - 1, stack[:], checkedUrls) 
+        
+        # Remove current url from stack so we can add the next
+        stack.pop()
+
+    return checkedUrls
 
 def main():
-
+    """Main Function"""
     # Main url to check
     url = '' 
     global baseUrl
@@ -212,8 +249,11 @@ def main():
     urls = []
     urls.append(url)
 
-    stack = linkcheck(urls)
-    print(stack)
+    checkedUrls = linkcheck(urls)
+    
+    print("\n -- Checked Urls: --")
+
+    print("Count: {countOfUrls}".format(countOfUrls=len(checkedUrls)))
 
 if __name__ == "__main__":
     main()
