@@ -156,14 +156,19 @@ def linkcheck(urls, depth=3, stack=[], checkedUrls=None):
 
     for url in urls:
 
+        if len(stack) > 0:
+            print("Check in: {}".format(stack[-1]))
+
         # Check if url has already been tested
-        if url in checkedUrls:
+        checkedUrl = [x for x in checkedUrls if x[0] == url and x[1] >= depth]
+        if len(checkedUrl) > 0:
             if verbose:
-                print("Already checked: {url}".replace("{url}", url))
+                print("checked URL: ")
+                print("Already checked in depth: {checkedDepth}/{currentDepth}: {url}".replace("{url}", url).replace("{checkedDepth}", str(checkedUrl[0][1])).replace("{currentDepth}", str(depth)))
             continue
 
         # Add url to checked urls
-        checkedUrls.append(url)
+        checkedUrls.append([url, depth])
 
         # If url is not valid (404)
         valid, httpCode = validate_url(url, stack)
@@ -201,16 +206,19 @@ def main():
     """Main Function"""
     # Main url to check
     url = '' 
-    global baseUrl
-    global baseUrlLang
+    # How many itterations should we do
+    depth = 3
     # Language code if provided
     languageCode = ''
     # Language like displayed in url
     languageType = ''
+
+    global baseUrl
+    global baseUrlLang
     global verbose
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "vhp:t:l:s", ["verbose", "language=", "url=", "depth="])
+        opts, args = getopt.getopt(sys.argv[1:], "vhpd:t:l", ["verbose", "language=", "url=", "depth="])
 
     except getopt.GetoptError:
         # Print debug info
@@ -232,6 +240,12 @@ def main():
             url = set_language(argument, url)
             languageCode = get_language_code(argument)
             language = argument
+        elif option in ('-d', "--depth"):
+            try: 
+                depth = int(argument)
+            except: 
+                print("Please enter an integer")
+                exit()
         elif option in ('-v', "--verbose"):
             verbose = True 
 
@@ -249,7 +263,9 @@ def main():
     urls = []
     urls.append(url)
 
-    checkedUrls = linkcheck(urls)
+    print("Depth: {}".format(depth))
+
+    checkedUrls = linkcheck(urls, depth=depth)
     
     print("\n -- Checked Urls: --")
 
