@@ -1,3 +1,5 @@
+# Created by 2481632 / marvin
+
 import os
 import sys, getopt
 import re
@@ -27,11 +29,15 @@ def print_help():
     print("USAGE: python main.py [options]")
     print("Options are: ")
     print("-h \t \t This help.")
-    print("-url \t \t Base url of which to search for invalid links.")
-    print("-l --language \t Check if language is consistent.")
+    print("--url \t \t Base url of which to search for invalid links.")
+    print("--language \t Check if language is consistent.")
     print("\t \t Format: xx. for subdomains or /xx/ for dir based language.")
-    print("Examples: ")
-    print("python main.py --url YOURWEBSITE.de -l /en/")
+    print("-d Number of recursions (default: 3)")
+    print("-v verbose mode")
+    print("\nExamples: ")
+    print("Check Links on YOURWEBSITE.EU 3 levels deep.")
+    print("This will warn you if you have broken links or you link to pages on your own site which changes the language.")
+    print("\t python main.py --url YOURWEBSITE.EU --language /en/")
 
 def set_language(language, url):
     """ Set language to url depending subdomain or dir method
@@ -100,8 +106,7 @@ def get_urls_in_response(url):
 def print_stack(stack):
     """Print stack in list
 
-    :stack: TODO
-    :returns: TODO
+    :stack: List of urls which has been visited
 
     """
     print("\n-- Begin of stack --\n")
@@ -118,14 +123,29 @@ def validate_url(url, stack=None):
 
     """
 
+    # ToDo: Return reason why not valid #
+
+    # We want to return not true if we hit an unkown or wrong url, even if the url is valid.
+    # ToDo: Make it possible to check external pages as well.
+    retFalse = False
+
     # Check http code of url
     httpResponse = get_http_response_code(url)
 
     # All http response codes which should be accepted
     allowedResponses = ["200", "301", "302"]
 
+    # Check if if base url has changed
+    if (str(url).find(str(baseUrlLang)) == -1):
+        # Check if we are still on our page but language has changed
+        if (str(url).find(str(baseUrl)) == -1):
+            print(Fore.CYAN + "-> Reached external link" + Style.RESET_ALL)
+        else:
+            print(Fore.YELLOW + "-> Language changed?" + Style.RESET_ALL)
+        retFalse = True
+
     # Check if http response code of url is not ok
-    if (str(httpResponse) in allowedResponses):
+    if (str(httpResponse) in allowedResponses) and not retFalse:
         print("HTTP Response of: {url} {httpResponse} OK".format(url=url, httpResponse=httpResponse))
         return True, httpResponse 
 
@@ -138,7 +158,7 @@ def linkcheck(urls, depth=3, stack=[], checkedUrls=None):
     """Where the magic happens. Will preform everything to check all urls
 
     :urls: All urls  
-    :returns: List of all links not returning http status code of 200 
+    :returns: List of all checked links.
 
     """
 
@@ -156,14 +176,13 @@ def linkcheck(urls, depth=3, stack=[], checkedUrls=None):
 
     for url in urls:
 
-        if len(stack) > 0:
-            print("Check in: {}".format(stack[-1]))
+        #if len(stack) > 0:
+        #    print("Check in: {}".format(stack[-1]))
 
         # Check if url has already been tested
         checkedUrl = [x for x in checkedUrls if x[0] == url and x[1] >= depth]
         if len(checkedUrl) > 0:
             if verbose:
-                print("checked URL: ")
                 print("Already checked in depth: {checkedDepth}/{currentDepth}: {url}".replace("{url}", url).replace("{checkedDepth}", str(checkedUrl[0][1])).replace("{currentDepth}", str(depth)))
             continue
 
@@ -225,6 +244,7 @@ def main():
         print("Getopt Error")
         sys.exit(2)
 
+    # Handle user input
     for option, argument in opts:
         if option in ("-h", "--help"):
             print_help()
@@ -262,8 +282,6 @@ def main():
 
     urls = []
     urls.append(url)
-
-    print("Depth: {}".format(depth))
 
     checkedUrls = linkcheck(urls, depth=depth)
     
