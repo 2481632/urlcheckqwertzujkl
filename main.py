@@ -11,6 +11,7 @@ from enum import Enum
 verbose = False
 verboseLevel = 0
 baseUrl = ''
+printValide = False 
 
 class urlCode(Enum):
     OK = 0,
@@ -32,8 +33,9 @@ def print_help():
     print("--url \t \t Base url of which to search for invalid links.")
     print("--language \t Check if language is consistent.")
     print("\t \t Format: xx. for subdomains or /xx/ for dir based language.")
-    print("-d Number of recursions (default: 3)")
-    print("-v verbose mode")
+    print("-d \t \t Depth of recursions (default: 3)")
+    print("--printvalide \t Print all successfully (HTTP code 200, 301) tested links")
+    print("-v \t \t verbose mode")
     print("\nExamples: ")
     print("Check Links on YOURWEBSITE.EU 3 levels deep.")
     print("This will warn you if you have broken links or you link to pages on your own site which changes the language.")
@@ -111,7 +113,7 @@ def print_stack(stack):
     """
     print("\n-- Begin of stack --\n")
     for item in stack:
-        print("->" + str(item))
+        print("-> " + str(item))
     print("\n-- End of stack --\n")
 
 def validate_url(url, stack=None):
@@ -134,22 +136,27 @@ def validate_url(url, stack=None):
 
     # All http response codes which should be accepted
     allowedResponses = ["200", "301", "302"]
+    # Response codes which indecate more or less serious problems
+    criticalResponses = ["500", "404"]
 
     # Check if if base url has changed
     if (str(url).find(str(baseUrlLang)) == -1):
         # Check if we are still on our page but language has changed
         if (str(url).find(str(baseUrl)) == -1):
-            print(Fore.CYAN + "-> Reached external link" + Style.RESET_ALL)
+            print(Fore.CYAN + "\n-> Reached external link\n" + Style.RESET_ALL)
         else:
-            print(Fore.YELLOW + "-> Language changed?" + Style.RESET_ALL)
+            print(Fore.YELLOW + "\n-> Language changed?\n" + Style.RESET_ALL)
         retFalse = True
 
     # Check if http response code of url is not ok
     if (str(httpResponse) in allowedResponses) and not retFalse:
-        print("HTTP Response of: {url} {httpResponse} OK".format(url=url, httpResponse=httpResponse))
+        if printValide or verbose:
+            print("HTTP Response of: {url} {httpResponse} OK".format(url=url, httpResponse=httpResponse))
         return True, httpResponse 
 
-    print("\n HTTP Rresponse of: {url} : {httpCode}".format(url=url, httpCode=httpResponse))
+    if httpResponse in criticalResponses:
+        print(Fore.RED, end="")
+    print("HTTP Rresponse of: {url} : {httpCode}".format(url=url, httpCode=httpResponse) + Style.RESET_ALL)
     if stack!= None:
         print_stack(stack)
     return False, httpResponse
@@ -235,9 +242,10 @@ def main():
     global baseUrl
     global baseUrlLang
     global verbose
+    global printValide 
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "vhpd:t:l", ["verbose", "language=", "url=", "depth="])
+        opts, args = getopt.getopt(sys.argv[1:], "vhpd:t:l", ["verbose", "printvalide", "language=", "url=", "depth="])
 
     except getopt.GetoptError:
         # Print debug info
@@ -268,6 +276,8 @@ def main():
                 exit()
         elif option in ('-v', "--verbose"):
             verbose = True 
+        elif option in ("--printvalide"):
+            printValide = True 
 
     # Check if user has entered a url
     if url == '':
